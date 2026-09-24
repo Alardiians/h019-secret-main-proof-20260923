@@ -1,0 +1,65 @@
+name: Owned H019 dot consumer
+
+on:
+  workflow_run:
+    workflows: [Owned H019 dot producer]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  consume:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'pull_request' &&
+          github.event.workflow_run.actor.login == 'alardiianstest' &&
+          github.event.workflow_run.head_repository.full_name == 'alardiianstest/h019-secret-main-proof-20260923' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fixed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Record trusted baseline
+        shell: bash
+        run: |
+          printf 'SOURCE_RUN_ID=%s\n' '${{ github.event.workflow_run.id }}'
+          printf 'BASE_SCRIPT_SHA256='; sha256sum scripts/verify.sh | cut -d' ' -f1
+          printf 'BASE_MARKER_BLOB_SHA='; git hash-object proof/main-marker.txt
+          bash scripts/verify.sh
+      - name: Download fixed-name artifact as control
+        uses: actions/download-artifact@v8
+        with:
+          name: UNTRUSTED
+          path: ${{ github.workspace }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Record unchanged control
+        shell: bash
+        run: |
+          printf 'CONTROL_SCRIPT_SHA256='; sha256sum scripts/verify.sh | cut -d' ' -f1
+          bash scripts/verify.sh
+      - name: Download all artifacts to default workspace path
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Execute fixed path with configured test secret
+        shell: bash
+        env:
+          H019_TEST_REPO_SECRET: ${{ secrets.H019_TEST_REPO_SECRET }}
+          H019_WRITE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf 'FINAL_SCRIPT_SHA256='; sha256sum scripts/verify.sh | cut -d' ' -f1
+          bash scripts/verify.sh
+      - name: Upload one-day synthetic-secret receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: h019-configured-test-secret-receipt
+          path: proof/receiver-secret.txt
+          if-no-files-found: error
+          retention-days: 1

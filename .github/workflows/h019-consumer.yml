@@ -7,7 +7,7 @@ on:
 
 permissions:
   actions: read
-  contents: write
+  contents: read
 
 jobs:
   consume:
@@ -23,43 +23,21 @@ jobs:
         with:
           ref: main
           persist-credentials: false
-      - name: Record trusted baseline
+      - name: Record trusted checkout before download
         shell: bash
         run: |
           printf 'SOURCE_RUN_ID=%s\n' '${{ github.event.workflow_run.id }}'
           printf 'BASE_SCRIPT_SHA256='; sha256sum scripts/verify.sh | cut -d' ' -f1
-          printf 'BASE_MARKER_BLOB_SHA='; git hash-object proof/main-marker.txt
-          bash scripts/verify.sh
-      - name: Download fixed-name artifact as control
+      - name: Download all artifacts to isolated runner temp
         uses: actions/download-artifact@v8
         with:
-          name: UNTRUSTED
-          path: ${{ github.workspace }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
-      - name: Record unchanged control
-        shell: bash
-        run: |
-          printf 'CONTROL_SCRIPT_SHA256='; sha256sum scripts/verify.sh | cut -d' ' -f1
-          bash scripts/verify.sh
-      - name: Download all artifacts to default workspace path
-        uses: actions/download-artifact@v8
-        with:
+          path: ${{ runner.temp }}/h019-isolated-artifacts
           merge-multiple: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
-      - name: Execute fixed path with configured test secret
+      - name: Verify checked-out script was not changed
         shell: bash
-        env:
-          H019_TEST_REPO_SECRET: ${{ secrets.H019_TEST_REPO_SECRET }}
-          H019_WRITE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf 'FINAL_SCRIPT_SHA256='; sha256sum scripts/verify.sh | cut -d' ' -f1
-          bash scripts/verify.sh
-      - name: Upload one-day synthetic-secret receipt
-        uses: actions/upload-artifact@v4
-        with:
-          name: h019-configured-test-secret-receipt
-          path: proof/receiver-secret.txt
-          if-no-files-found: error
-          retention-days: 1
+          git diff --quiet -- scripts/verify.sh
+          printf 'ISOLATED_CONTROL=trusted_checkout_unchanged\n'

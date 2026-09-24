@@ -1,0 +1,41 @@
+name: Owned H019 dot producer
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  lower:
+    if: >-
+      ${{ github.event.pull_request.title == '.' &&
+          github.event.pull_request.head.repo.full_name == 'alardiianstest/h019-secret-main-proof-20260923' &&
+          github.event.pull_request.user.login == 'alardiianstest' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out untrusted PR merge commit
+        uses: actions/checkout@v4
+      - name: Stage only PR file
+        shell: bash
+        run: |
+          test -f payload/scripts/verify.sh
+          mkdir -p staged/scripts
+          cp payload/scripts/verify.sh staged/scripts/verify.sh
+          printf 'PR_FILE_SHA256='; sha256sum staged/scripts/verify.sh | cut -d' ' -f1
+          printf 'LOWER_ARTIFACT=UNTRUSTED\n' > declared.txt
+      - name: Upload PR-title artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.pull_request.title }}
+          path: staged
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload fixed-name control artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UNTRUSTED
+          path: declared.txt
+          if-no-files-found: error
+          retention-days: 1
